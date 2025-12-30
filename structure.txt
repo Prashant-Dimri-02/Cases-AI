@@ -1,0 +1,66 @@
+case_ai_backend/
+│
+├── app/
+│   ├── main.py
+│   ├── core/
+│   │   ├── config.py
+│   │   ├── security.py
+│   │   ├── dependencies.py
+│   │   └── logging.py
+│   │
+│   ├── db/
+│   │   ├── base.py
+│   │   ├── session.py
+│   │   └── init_db.py
+│   │
+│   ├── models/
+│   │   ├── user.py
+│   │   ├── role.py
+│   │   ├── case.py
+│   │   ├── case_file.py
+│   │   ├── embedding.py
+│   │   └── refresh_token.py
+│   │
+│   ├── schemas/
+│   │   ├── auth.py
+│   │   ├── user.py
+│   │   ├── case.py
+│   │   ├── file.py
+│   │   └── qa.py
+│   │
+│   ├── api/
+│   │   ├── api_router.py
+│   │   └── v1/
+│   │       ├── auth.py
+│   │       ├── users.py
+│   │       ├── cases.py
+│   │       ├── files.py
+│   │       └── qa.py
+│   │
+│   ├── services/
+│   │   ├── auth_service.py
+│   │   ├── case_service.py
+│   │   ├── file_service.py
+│   │   ├── embedding_service.py
+│   │   └── qa_service.py
+│   │
+│   ├── utils/
+│   │   ├── password.py
+│   │   ├── pdf_parser.py
+│   │   ├── text_chunker.py
+│   │   └── s3.py
+│   │
+│   └── tests/
+│       ├── test_auth.py
+│       ├── test_cases.py
+│       └── test_qa.py
+│
+├── alembic/
+│   ├── versions/
+│   └── env.py
+│
+├── alembic.ini
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+└── README.md
