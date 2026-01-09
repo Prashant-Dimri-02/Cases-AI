@@ -11,6 +11,7 @@ class CaseFileNameOut(BaseModel):
     id: int
     filename: str
     processed: bool
+    file_size: int
     
     class Config:
         from_attributes = True

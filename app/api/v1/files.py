@@ -5,6 +5,7 @@ from app.core.dependencies import get_db, require_admin
 from app.services.file_service import FileService
 from app.schemas.file import FileUploadResponse
 from fastapi.responses import FileResponse
+from app.services.qa_service import QAService
 
 router = APIRouter()
 
@@ -22,6 +23,7 @@ async def train_file_embeddings(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
+    qa=QAService(db)
     """
     Train / generate embeddings for an uploaded file
     """
@@ -40,15 +42,15 @@ async def train_file_embeddings(
         }
 
     # Run embedding in background
-    background_tasks.add_task(
-        file_service.process_file_embeddings,
-        file_id,
-    )
+    await file_service.process_file_embeddings(file_id) 
+    meta_data=qa.extract_case_metadata_for_file(file_id)
+    if getattr(file, "case_id", None) is not None and meta_data:
+        merged = qa.merge_case_metadata_for_case(file.case_id, meta_data)
 
     return {
         "started": True,
         "file_id": file_id,
-        "message": "Embedding process started",
+        "message": "Embedding Created",
     }
 
 @router.get("/{file_id}/view")

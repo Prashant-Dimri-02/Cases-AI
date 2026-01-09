@@ -22,6 +22,7 @@ python-multipart
 
 # Utilities
 pdfminer.six
+python-docx
 openai==0.28.1
 numpy
 boto3
@@ -29,3 +30,7 @@ boto3
 # Testing
 pytest
 pymupdf
+
+
+#Files
+aiofiles
