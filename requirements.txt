@@ -34,3 +34,5 @@ pymupdf
 
 #Files
 aiofiles
+
+python-pptx
