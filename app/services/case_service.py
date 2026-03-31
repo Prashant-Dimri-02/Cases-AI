@@ -103,6 +103,7 @@ class CaseService:
             strong_evidence=data.get("strong_evidence"),
             approaching_deadline=data.get("approaching_deadline"),
             case_description=data.get("case_description"),
+            previous_court_date=data.get("previous_court_date"),
         )
 
         self.db.add(metadata)

@@ -36,3 +36,9 @@ pymupdf
 aiofiles
 
 python-pptx
+
+apscheduler==3.10.4
+
+#For TTS
+pydub
+azure-cognitiveservices-speech

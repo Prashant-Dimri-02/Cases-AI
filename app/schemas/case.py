@@ -16,6 +16,7 @@ class ExtractedCaseMetadata(BaseModel):
     strong_evidence: Optional[str] = None
     approaching_deadline: Optional[bool] = None
     case_description: Optional[str] = None
+    previous_court_date: Optional[date] = None
     
     model_config = {"from_attributes": True}
 
@@ -67,3 +68,4 @@ class PaginatedResponse(BaseModel, Generic[T]):
     page_size: int
     total: int
     items: List[T]
+    total_upcoming_meetings: int

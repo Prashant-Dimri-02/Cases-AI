@@ -10,3 +10,4 @@ class RefreshToken(Base):
     token = Column(String, unique=True, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     user = relationship("User", back_populates="refresh_tokens")
+

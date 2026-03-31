@@ -37,3 +37,9 @@ class Case(Base):
         cascade="all, delete",
         passive_deletes=True,
     )
+
+    upcoming_meetings = relationship(
+        "UpcomingMeeting",
+        back_populates="case",
+        cascade="all, delete-orphan",
+    )

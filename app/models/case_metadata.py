@@ -18,6 +18,7 @@ class CaseMetadata(Base):
     attorney = Column(Text, nullable=True)
     next_court_date = Column(Date, nullable=True)
     strong_evidence = Column(Text, nullable=True)
+    previous_court_date = Column(Date, nullable=True)
     approaching_deadline = Column(Boolean, nullable=True)
     case_description = Column(Text, nullable=True)
 

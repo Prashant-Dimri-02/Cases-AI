@@ -45,6 +45,7 @@ async def train_file_embeddings(
     await file_service.process_file_embeddings(file_id) 
     meta_data=qa.extract_case_metadata_for_file(file_id)
     if getattr(file, "case_id", None) is not None and meta_data:
+        print("merging metadata",meta_data)
         merged = qa.merge_case_metadata_for_case(file.case_id, meta_data)
 
     return {

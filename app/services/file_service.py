@@ -15,6 +15,7 @@ from typing import Set
 import aiofiles
 
 
+
 class FileService:
     def __init__(self, db: Session):
         self.db = db
@@ -133,7 +134,6 @@ class FileService:
             .filter(models.case_file.CaseFile.id == file_id)
             .first()
         )
-        print(file_id)
         if not file_model:
             raise ValueError("File not found")
 

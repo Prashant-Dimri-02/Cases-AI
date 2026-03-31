@@ -1,7 +1,11 @@
 # app/api/v1/cases.py
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Form, HTTPException,Query, UploadFile,File
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.dependencies import get_db, require_admin
+from app.models.upcoming_meeting import UpcomingMeeting
 from app.schemas.case import CreateCaseOut, CaseListOut,PaginatedResponse,CaseOut
 from app.services.case_service import CaseService
 from typing import List, Optional
@@ -40,7 +44,6 @@ async def create_case(
 
         # 2) create embeddings and process file (async)
         processing_result = await hnd.process_file_embeddings(file_id=file_id)
-
         if not processing_result.get("processed"):
             # continue and return partial result; or raise if you need strict success
             # we'll return partial result
@@ -69,10 +72,8 @@ async def create_case(
 def list_cases(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-
-    case_name: Optional[str] = Query(None, description="Search by case name"),
-    case_no: Optional[str] = Query(None, description="Exact case number"),
-
+    case_name: Optional[str] = Query(None),
+    case_no: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     _=Depends(require_admin),
 ):
@@ -86,13 +87,24 @@ def list_cases(
         case_no=case_no,
     )
 
+    # ✅ COUNT upcoming meetings (ONLY ONCE)
+    total_upcoming_meetings = (
+        db.query(func.count(UpcomingMeeting.id))
+        .filter(
+            UpcomingMeeting.start_time_utc > datetime.utcnow(),
+            UpcomingMeeting.status == "scheduled"
+        )
+        .scalar()
+    )
+
     return {
         "page": page,
         "page_size": page_size,
         "total": total,
         "items": cases,
+        "total_upcoming_meetings": total_upcoming_meetings,  # 👈 ADD THIS
     }
-
+    
 @router.get("/{case_id}", response_model=CaseOut)
 def get_case(
     case_id: int,
@@ -105,8 +117,6 @@ def get_case(
     
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
-    print(case.__dict__)
-    print("here it is")
     # ✅ Pydantic v2 serialization
     return CaseOut.model_validate(case, from_attributes=True)
 

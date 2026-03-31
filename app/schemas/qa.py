@@ -8,3 +8,11 @@ class QARequest(BaseModel):
 class QAResponse(BaseModel):
     answer: str
     source_chunks: list
+
+
+class SpeechResponse(BaseModel):
+    text: str
+    confidence: float | None = None
+    language: str | None = None
+    duration_ms: int | None = None
+    provider: str = "azure"
