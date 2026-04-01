@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4o-mini"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
+    
+    AZURE_OPENAI_API_KEY: Optional[str] = None
+    AZURE_OPENAI_ENDPOINT: Optional[str] = None
+    AZURE_OPENAI_API_VERSION: str = "2024-02-01"
+    AZURE_OPENAI_EMBEDDING_DEPLOYMENT: Optional[str] = None
+    AZURE_OPENAI_CHAT_DEPLOYMENT: Optional[str] = None
 
     # ===============================
     # OPTIONAL STORAGE (AWS / Azure later)

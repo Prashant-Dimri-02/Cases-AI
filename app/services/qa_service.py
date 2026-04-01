@@ -6,19 +6,17 @@ from datetime import date, datetime
 import json
 import re
 import logging
+from app.core.azure_openai import client
 from fastapi import UploadFile
 from app.schemas import file
 from app.schemas.qa import SpeechResponse
 import numpy as np
-import openai
 from sqlalchemy.orm import Session
 from app.services.embedding_service import EmbeddingService
 from pydub import AudioSegment
 import azure.cognitiveservices.speech as speechsdk
 from app.core.config import settings
 from app import models
-
-openai.api_key = settings.OPENAI_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -205,8 +203,8 @@ class QAService:
     Noisy transcript: {question}
     """
 
-        refine_response = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
+        refine_response = client.chat.completions.create(
+            model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
             messages=[{"role": "user", "content": refine_prompt}],
             temperature=0,
             max_tokens=120,
@@ -228,8 +226,8 @@ class QAService:
             refined = question  # force real question path
 
         if refined.upper() == "GREETING":
-            greeting_response = openai.ChatCompletion.create(
-                model="gpt-4o-mini",
+            greeting_response = client.chat.completions.create(
+                model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
                 messages=[
                     {
                         "role": "system",
@@ -266,11 +264,11 @@ class QAService:
         # ------------------------------------------------------------------
         # 4. NORMAL RAG FLOW (unchanged)
         # ------------------------------------------------------------------
-        embedding_response = openai.Embedding.create(
-            model="text-embedding-3-small",
+        embedding_response = client.embeddings.create(
+            model=settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT,
             input=question,
         )
-        question_vector = embedding_response["data"][0]["embedding"]
+        question_vector = embedding_response.data[0].embedding
 
         embeddings = (
             self.db.query(models.embedding.Embedding)
@@ -315,8 +313,8 @@ class QAService:
 
     Return the indices of the most relevant chunks as a JSON list like: [0,2,3]
     """
-        rerank_response = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
+        rerank_response = client.chat.completions.create(
+            model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
             messages=[{"role": "user", "content": rerank_prompt}],
             temperature=0,
         )
@@ -366,8 +364,8 @@ class QAService:
             }
         )
 
-        completion = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
+        completion = client.chat.completions.create(
+            model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
             messages=messages,
             max_tokens=300,
             temperature=0,
@@ -410,7 +408,7 @@ class QAService:
 
         next_court_date = data.get("next_court_date")
         prev_court_date = data.get("previous_court_date")
-        print(next_court_date)
+        
         if next_court_date:
             try:
                 next_dt = datetime.strptime(next_court_date, "%Y-%m-%d").date()
@@ -434,19 +432,18 @@ class QAService:
             .filter(models.embedding.Embedding.file_id == file_id)
             .all()
         )
-
+        print("here")
         if not embeddings:
             return {}
 
         # generic summary query to find informative chunks
         query = "case parties court judge lawyer filing date evidence next hearing deadline attorney"
 
-        embedding_response = openai.Embedding.create(
-            model="text-embedding-3-small",
+        embedding_response = client.embeddings.create(
+            model=settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT,
             input=query,
         )
-        query_vector = embedding_response["data"][0]["embedding"]
-
+        query_vector = embedding_response.data[0].embedding
         vectors = [e.vector for e in embeddings]
         similarities = self._cos_similarities(query_vector, vectors)
 
@@ -482,16 +479,14 @@ Document:
 {context}
 """
 
-        completion = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
+        completion = client.chat.completions.create(
+            model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=700,
             temperature=0,
         )
 
         raw = completion.choices[0].message.content.strip()
-
-        
         # Safe JSON extraction
         try:
             data = json.loads(raw)

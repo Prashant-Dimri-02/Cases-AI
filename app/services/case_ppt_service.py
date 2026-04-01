@@ -2,15 +2,12 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from app.models.case_metadata import CaseMetadata
 from app.core.config import settings
-import openai
+from app.core.azure_openai import client
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.enum.text import PP_ALIGN
 from pptx.dml.color import RGBColor
 import uuid
-
-openai.api_key = settings.OPENAI_API_KEY
-
 
 class CasePPTService:
     def __init__(self, db: Session):
@@ -67,8 +64,8 @@ Strong Evidence: {metadata.strong_evidence}
 Description: {metadata.case_description}
 """
 
-        response = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
+        response = client.chat.completions.create(
+            model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.25,
             max_tokens=900,

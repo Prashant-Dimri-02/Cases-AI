@@ -44,6 +44,7 @@ async def create_case(
 
         # 2) create embeddings and process file (async)
         processing_result = await hnd.process_file_embeddings(file_id=file_id)
+        print("File processing result:", processing_result)  # log the processing result for debugging
         if not processing_result.get("processed"):
             # continue and return partial result; or raise if you need strict success
             # we'll return partial result
@@ -51,7 +52,9 @@ async def create_case(
         else:
             # 3) Run QA/AI to extract structured metadata from saved chunks/embeddings
             try:
+                print("i worked")
                 extracted_metadata = svc.qa_service.extract_case_metadata_for_file(file_id=file_id)
+                print("Extracted metadata:", extracted_metadata )
             except Exception as e:
                 # log the error, return partial
                 extracted_metadata = None

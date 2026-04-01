@@ -1,10 +1,7 @@
 # app/services/mom_service.py
 
 from app.core.config import settings
-import openai
-
-openai.api_key = settings.OPENAI_API_KEY
-
+from app.core.azure_openai import client
 
 class MOMService:
     def __init__(self, db):
@@ -44,8 +41,8 @@ Transcript:
 {transcript}
 """
 
-        response = openai.ChatCompletion.create(
-            model="gpt-4o-mini",   # ✅ fast + cheap
+        response = client.chat.completions.create(
+            model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
             messages=[
                 {"role": "system", "content": "You clean legal transcripts."},
                 {"role": "user", "content": prompt}
@@ -53,7 +50,7 @@ Transcript:
             temperature=0.2
         )
 
-        return response["choices"][0]["message"]["content"].strip()
+        return response.choices[0].message.content.strip()
 
     # ✅ GENERATE MOM
     def create_mom(self, cleaned_transcript: str) -> str:
@@ -79,8 +76,8 @@ Transcript:
 {cleaned_transcript}
 """
 
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",   # ✅ better quality for MOM
+        response = client.chat.completions.create(
+            model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
             messages=[
                 {"role": "system", "content": "You generate professional MOM documents."},
                 {"role": "user", "content": prompt}
