@@ -1,6 +1,6 @@
 # app/schemas/user.py
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import List, Optional
 
 class UserCreate(BaseModel):
     email: EmailStr
@@ -11,7 +11,7 @@ class UserOut(BaseModel):
     id: int
     email: EmailStr
     full_name: Optional[str]
-    is_admin: bool
+    roles: List[str]
 
     class Config:
-        orm_mode = True
+        from_attributes = True

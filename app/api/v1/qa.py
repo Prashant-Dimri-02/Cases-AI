@@ -49,7 +49,7 @@ def ask(data: dict, db: Session = Depends(get_db)):
     service = QAService(db)
 
     result = service.answer_question(
-        case_id=1,
+        case_id=case_id,
         question=transcript
     )
     

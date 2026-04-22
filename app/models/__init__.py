@@ -8,3 +8,5 @@ from app.models.chat_session import ChatSession
 from app.models.chat_message import ChatMessage
 from app.models.case_metadata import CaseMetadata
 from app.models.upcoming_meeting import UpcomingMeeting
+from .associations import user_roles
+from .associations_case_user import case_users

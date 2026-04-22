@@ -432,7 +432,6 @@ class QAService:
             .filter(models.embedding.Embedding.file_id == file_id)
             .all()
         )
-        print("here")
         if not embeddings:
             return {}
 
@@ -727,8 +726,6 @@ Document:
         if not AZURE_SPEECH_KEY or not AZURE_SPEECH_REGION:
             raise RuntimeError("Azure Speech env vars not set")
 
-        print("Incoming file:", file.filename, file.content_type)
-
         # 2️⃣ Preserve real file extension
         suffix = os.path.splitext(file.filename)[1] or ".webm"
 
@@ -737,8 +734,6 @@ Document:
             tmp.write(data)
             input_path = tmp.name
 
-        print("Temp input path:", input_path)
-
         # 3️⃣ Convert to WAV
         try:
             audio = AudioSegment.from_file(input_path)
@@ -746,10 +741,8 @@ Document:
 
             wav_path = input_path + ".wav"
             audio.export(wav_path, format="wav")
-            print("WAV exported:", wav_path)
 
         except Exception as e:
-            print("❌ Audio decode/convert failed:", repr(e))
             raise RuntimeError("Audio conversion failed")
 
         # 4️⃣ Azure Speech
@@ -767,10 +760,8 @@ Document:
             )
 
             result = recognizer.recognize_once()
-            print("Azure result reason:", result.reason)
 
         except Exception as e:
-            print("❌ Azure SDK failed:", repr(e))
             raise RuntimeError("Azure Speech failed")
 
         # 5️⃣ Cleanup

@@ -1,9 +1,11 @@
 # app/schemas/case.py
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 from typing import Optional
 from datetime import datetime
 from typing import Generic, TypeVar, List
 from datetime import date
+
+from app.models.case_file import FileStatus
 T = TypeVar("T")
 
 class ExtractedCaseMetadata(BaseModel):
@@ -26,8 +28,13 @@ class CaseFileOut(BaseModel):
     file_path: Optional[str]
     content_type: Optional[str]
     file_size: Optional[int]
-    processed: bool
+    status: FileStatus  # ✅ include actual source of truth
 
+    @computed_field
+    @property
+    def processed(self) -> bool:
+        return self.status == FileStatus.PROCESSED
+    
     model_config = {"from_attributes": True}
 
 class CaseOut(BaseModel):

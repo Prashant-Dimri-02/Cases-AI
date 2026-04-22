@@ -3,30 +3,92 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, HTTPException,Query, UploadFile,File
 from sqlalchemy import func
-from sqlalchemy.orm import Session
-from app.core.dependencies import get_db, require_admin
+from sqlalchemy.orm import Session, joinedload
+from app.core.dependencies import get_db
+from app.models.case_file import CaseFile, FileStatus
 from app.models.upcoming_meeting import UpcomingMeeting
 from app.schemas.case import CreateCaseOut, CaseListOut,PaginatedResponse,CaseOut
 from app.services.case_service import CaseService
 from typing import List, Optional
 from app.schemas.file import CaseFileNameOut
-
+from app.core.dependencies import require_role, get_current_user
+from app.models.user import User
+from app.models.case import Case
+from sqlalchemy.orm import joinedload
+from app.schemas.file import ApprovalFileOut
 from app.services.file_service import FileService
 
 router = APIRouter()
 
+@router.get("/required-approval-files", response_model=List[ApprovalFileOut])
+def list_files_requiring_approval(
+    db: Session = Depends(get_db),
+    user=Depends(require_role(["ADMIN"]))
+):
+    # 🔥 Fetch files
+    files = (
+        db.query(CaseFile)
+        .options(joinedload(CaseFile.case))
+        .filter(CaseFile.status == FileStatus.PENDING)
+        .all()
+    )
+
+    # 🔥 Collect user ids
+    user_ids = list({f.requested_by for f in files if f.requested_by})
+
+    users_map = {}
+
+    if user_ids:
+        users = (
+            db.query(User)
+            .options(joinedload(User.roles))  # ✅ preload roles
+            .filter(User.id.in_(user_ids))
+            .all()
+        )
+        users_map = {u.id: u for u in users}
+
+    response = []
+
+    for f in files:
+        case = f.case
+        requested_user = users_map.get(f.requested_by)
+
+        response.append({
+            "case_id": case.id,
+            "case_name": case.case_name,
+            "file_id": f.id,
+            "file_name": f.filename,
+            "requested_by": {
+                "id": requested_user.id,
+                "name": requested_user.full_name,
+                "email": requested_user.email,
+                "roles": [role.name for role in requested_user.roles]  # ✅ roles added
+            } if requested_user else None
+        })
+
+    return response
 @router.post("", response_model=CreateCaseOut)
 async def create_case(
     case_name: str = Form(...),
     description: str | None = Form(None),
+    owner_id: int = Form(...),
     file: UploadFile | None = File(None),
     db: Session = Depends(get_db),
-    current_user = Depends(require_admin),
+    current_user = Depends(require_role(["ADMIN"])),
 ):
     svc = CaseService(db)
     hnd=FileService(db)
     # create case synchronously (keeps your existing create_case behavior)
     case = svc.create_case_from_fields(case_name=case_name, description=description)
+
+    owner = db.query(User).filter(User.id == owner_id).first()
+
+    if not owner:
+        raise HTTPException(400, "Invalid owner")
+
+    case.owner_id = owner_id
+    db.commit()
+    db.refresh(case)
 
     file_out = None
     extracted_metadata = None
@@ -78,7 +140,7 @@ def list_cases(
     case_name: Optional[str] = Query(None),
     case_no: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _=Depends(require_admin),
+    current_user = Depends(get_current_user),
 ):
     service = CaseService(db)
     skip = (page - 1) * page_size
@@ -88,6 +150,7 @@ def list_cases(
         limit=page_size,
         case_name=case_name,
         case_no=case_no,
+        user=current_user,
     )
 
     # ✅ COUNT upcoming meetings (ONLY ONCE)
@@ -112,7 +175,7 @@ def list_cases(
 def get_case(
     case_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(require_admin),
+    current_user = Depends(require_role(["ADMIN","MANAGER", "USER"])),
 ):
     svc = CaseService(db)
 
@@ -127,10 +190,74 @@ def get_case(
 def list_case_files(
     case_id: int,
     db: Session = Depends(get_db),
-    _ = Depends(require_admin),
+    _ = Depends(require_role(["MASTER_ADMIN", "ADMIN"])),
 ):
     """
     List file names for a case (id + filename only)
     """
     file_service = FileService(db)
     return file_service.list_file_names_by_case(case_id)
+
+@router.post("/{case_id}/assign-users")
+def assign_users(
+    case_id: int,
+    user_ids: list[int],
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    case = db.query(Case).filter(Case.id == case_id).first()
+
+    if not case:
+        raise HTTPException(404, "Case not found")
+
+    user_roles = [r.name for r in current_user.roles]
+
+    # Only ADMIN or MANAGER (owner) can assign
+    if "ADMIN" not in user_roles and case.owner_id != current_user.id:
+        raise HTTPException(403, "Not allowed")
+
+    users = db.query(User).filter(User.id.in_(user_ids)).all()
+
+    if not users:
+        raise HTTPException(400, "Invalid users")
+
+    # 🔥 IMPORTANT: Ensure only USERS (not managers/admins)
+    for user in users:
+        if user in case.users:
+            continue  # skip already assigned users
+        roles = [r.name for r in user.roles]
+        if "USER" not in roles:
+            raise HTTPException(400, f"{user.email} is not a normal user")
+
+    case.users.extend(users)
+    db.commit()
+
+    return {"message": "Users assigned successfully"}
+
+@router.post("/{case_id}/assign-manager")
+def assign_manager(
+    case_id: int,
+    manager_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_role(["ADMIN"]))
+):
+
+    case = db.query(Case).filter(Case.id == case_id).first()
+
+    if not case:
+        raise HTTPException(404, "Case not found")
+
+    manager = db.query(User).filter(User.id == manager_id).first()
+
+    if not manager:
+        raise HTTPException(404, "Manager not found")
+
+    manager_roles = [r.name for r in manager.roles]
+
+    if "MANAGER" not in manager_roles:
+        raise HTTPException(400, "User is not a manager")
+
+    case.owner_id = manager_id
+    db.commit()
+
+    return {"message": "Manager assigned successfully"}

@@ -1,66 +1,107 @@
-case_ai_backend/
-│
-├── app/
-│   ├── main.py
-│   ├── core/
-│   │   ├── config.py
-│   │   ├── security.py
-│   │   ├── dependencies.py
-│   │   └── logging.py
-│   │
-│   ├── db/
-│   │   ├── base.py
-│   │   ├── session.py
-│   │   └── init_db.py
-│   │
-│   ├── models/
-│   │   ├── user.py
-│   │   ├── role.py
-│   │   ├── case.py
-│   │   ├── case_file.py
-│   │   ├── embedding.py
-│   │   └── refresh_token.py
-│   │
-│   ├── schemas/
-│   │   ├── auth.py
-│   │   ├── user.py
-│   │   ├── case.py
-│   │   ├── file.py
-│   │   └── qa.py
-│   │
-│   ├── api/
-│   │   ├── api_router.py
-│   │   └── v1/
-│   │       ├── auth.py
-│   │       ├── users.py
-│   │       ├── cases.py
-│   │       ├── files.py
-│   │       └── qa.py
-│   │
-│   ├── services/
-│   │   ├── auth_service.py
-│   │   ├── case_service.py
-│   │   ├── file_service.py
-│   │   ├── embedding_service.py
-│   │   └── qa_service.py
-│   │
-│   ├── utils/
-│   │   ├── password.py
-│   │   ├── pdf_parser.py
-│   │   ├── text_chunker.py
-│   │   └── s3.py
-│   │
-│   └── tests/
-│       ├── test_auth.py
-│       ├── test_cases.py
-│       └── test_qa.py
-│
-├── alembic/
-│   ├── versions/
-│   └── env.py
-│
-├── alembic.ini
-├── Dockerfile
-├── docker-compose.yml
-├── requirements.txt
-└── README.md
+D:.
+|   .env
+|   .gitignore
+|   alembic.ini
+|   docker-compose.yml
+|   Dockerfile
+|   README.md
+|   requirements.txt
+|   structure.txt
+|
++---alembic
+|   |   env.py
+|   |   README
+|   |   script.py.mako
+|   |
+|   +---versions
+|   |   |   147c7b14188f_fixed_tables_removed_group.py
+|   |   |
+|
++---app
+|   |   main.py
+|   |
+|   +---api
+|   |   |   api_router.py
+|   |   |
+|   |   +---v1
+|   |   |   |   auth.py
+|   |   |   |   cases.py
+|   |   |   |   case_ppt.py
+|   |   |   |   chat.py
+|   |   |   |   files.py
+|   |   |   |   meeting.py
+|   |   |   |   mom.py
+|   |   |   |   qa.py
+|   |   |   |   users.py
+|   |
+|   +---core
+|   |   |   azure_openai.py
+|   |   |   config.py
+|   |   |   dependencies.py
+|   |   |   global_case.py
+|   |   |   logging.py
+|   |   |   scheduler.py
+|   |   |   security.py
+|   |   |
+|   |
+|   +---db
+|   |   |   base.py
+|   |   |   init_db.py
+|   |   |   session.py
+|   |   |
+|   |
+|   +---models
+|   |   |   associations.py
+|   |   |   associations_case_user.py
+|   |   |   case.py
+|   |   |   case_file.py
+|   |   |   case_metadata.py
+|   |   |   chat_message.py
+|   |   |   chat_session.py
+|   |   |   embedding.py
+|   |   |   refresh_token.py
+|   |   |   role.py
+|   |   |   upcoming_meeting.py
+|   |   |   user.py
+|   |   |   __init__.py
+|   |   |
+|   |
+|   +---schemas
+|   |   |   auth.py
+|   |   |   case.py
+|   |   |   chat.py
+|   |   |   file.py
+|   |   |   meeting.py
+|   |   |   qa.py
+|   |   |   user.py
+|   |   |
+|   |
+|   +---services
+|   |   |   auth_service.py
+|   |   |   case_ppt_service.py
+|   |   |   case_service.py
+|   |   |   chat_service.py
+|   |   |   court_cron_service.py
+|   |   |   embedding_service.py
+|   |   |   file_service.py
+|   |   |   graph_meeting_service.py
+|   |   |   mom_service.py
+|   |   |   qa_service.py
+|   |   |
+|   |
+|   +---tests
+|   |       test_auth.py
+|   |       test_cases.py
+|   |       test_qa.py
+|   |
+|   +---uploads
+|   |       0384533f6bc74fe0a34ca64256633ce4.pdf
+|   |
+|   +---utils
+|   |   |   password.py
+|   |   |   pdf_parser.py
+|   |   |   s3.py
+|   |   |   text_chunker.py
+|
+\---uploads
+        0084b6317b3c49dcbcb323267630b4cb.docx
