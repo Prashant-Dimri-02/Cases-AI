@@ -3,6 +3,7 @@ from sqlalchemy import Column, Integer, String, DateTime, func, Boolean, Foreign
 from sqlalchemy.orm import relationship
 from app.models.associations_case_user import case_users
 from app.db.base import Base
+from app.models.associations_case_manager import case_managers
 
 
 class Case(Base):
@@ -13,15 +14,11 @@ class Case(Base):
     case_no = Column(String(50), unique=True, nullable=False, index=True)
     description = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
-    owner_id = Column(Integer, ForeignKey("users.id"))
-
-    # ✅ FIX: explicitly define foreign_keys
-    owner = relationship(
+    managers = relationship(
         "User",
-        foreign_keys=[owner_id],
-        back_populates="owned_cases"
+        secondary=case_managers,
+        backref="managed_cases"
     )
-
     users = relationship("User", secondary=case_users, backref="cases")
 
     case_metadata = relationship(

@@ -24,9 +24,3 @@ class User(Base):
         back_populates="users"
     )
 
-    # ✅ FIX: reverse mappings
-    owned_cases = relationship(
-        "Case",
-        foreign_keys="Case.owner_id",
-        back_populates="owner"
-    )

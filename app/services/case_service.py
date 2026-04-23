@@ -27,12 +27,11 @@ class CaseService:
         now = datetime.utcnow().strftime("%Y%m%d")
         return f"CASE-{now}-{next_id}"
 
-    def create_case_from_fields(self, case_name: str, description: Optional[str], owner_id: int):
+    def create_case_from_fields(self, case_name: str, description: Optional[str]):
         case = Case(
             case_name=case_name,
             description=description,
             case_no="temp",
-            owner_id=owner_id,
         )
         self.db.add(case)
         self.db.flush()
@@ -87,7 +86,9 @@ class CaseService:
                 pass
 
             elif "MANAGER" in user_roles:
-                query = query.filter(Case.owner_id == user.id)
+                query = query.filter(
+                    Case.managers.any(models.user.User.id == user.id)
+                )
 
             else:
                 query = query.filter(

@@ -1,3 +1,4 @@
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app import models
 from app.schemas.user import UserCreate
@@ -76,16 +77,104 @@ class AuthService:
             "roles": role_names  # useful for frontend
             }
 
-    def list_users(self):
-        users = self.db.query(models.user.User).all()
+    def list_users(self, current_user, case_id: int | None = None):
+        current_roles = {r.name for r in current_user.roles}
 
-        result = []
-        for u in users:
-            result.append({
+        query = self.db.query(models.user.User).join(models.user.User.roles)
+
+        # ADMIN → all users + managers
+        if "ADMIN" in current_roles:
+            users = query.filter(
+                models.role.Role.name.in_(["MEMBER", "MANAGER"])
+            ).distinct().all()
+
+        # MANAGER → all users
+        elif "MANAGER" in current_roles:
+            users = query.filter(
+                models.role.Role.name == "MEMBER"
+            ).distinct().all()
+
+        # MEMBER → same case users
+        elif "MEMBER" in current_roles:
+            if not case_id:
+                return []
+
+            users = (
+                query
+                .join(models.associations_case_user.case_users)
+                .filter(
+                    models.associations_case_user.case_users.c.case_id == case_id,
+                    models.role.Role.name == "MEMBER"
+                )
+                .distinct()
+                .all()
+            )
+        else:
+            users = []
+
+        return self.format_users(users)
+    
+    def get_assignable_users(self, current_user, case_id: int):
+        current_roles = {r.name for r in current_user.roles}
+
+        # Only ADMIN or MANAGER can assign
+        if "ADMIN" not in current_roles and "MANAGER" not in current_roles:
+            raise HTTPException(403, "Not allowed")
+
+        query = (
+            self.db.query(models.user.User)
+            .join(models.user.User.roles)
+            .filter(models.role.Role.name == "MEMBER")
+        )
+
+        # Optional: exclude already assigned users
+        query = query.outerjoin(
+            models.associations_case_user.case_users,
+            (models.associations_case_user.case_users.c.user_id == models.user.User.id) &
+            (models.associations_case_user.case_users.c.case_id == case_id)
+        ).filter(
+            models.associations_case_user.case_users.c.user_id == None
+        )
+
+        users = query.distinct().all()
+
+        return self.format_users(users)
+    
+    def get_assignable_managers(self, current_user, case_id: int):
+        current_roles = {r.name for r in current_user.roles}
+
+        # Only ADMIN can assign managers
+        if "ADMIN" not in current_roles:
+            raise HTTPException(403, "Not allowed")
+
+        query = (
+            self.db.query(models.user.User)
+            .join(models.user.User.roles)
+            .filter(models.role.Role.name == "MANAGER")
+        )
+
+        # Optional: exclude already assigned managers
+        case = self.db.query(models.case.Case).filter(models.case.Case.id == case_id).first()
+
+        if not case:
+            raise HTTPException(404, "Case not found")
+
+        existing_manager_ids = [m.id for m in case.managers]
+
+        if existing_manager_ids:
+            query = query.filter(~models.user.User.id.in_(existing_manager_ids))
+
+        users = query.distinct().all()
+
+        return self.format_users(users)
+    
+    def format_users(self, users):
+        return [
+            {
                 "id": u.id,
                 "email": u.email,
                 "full_name": u.full_name,
                 "roles": [r.name for r in u.roles],
-            })
-
-        return result
+            }
+            for u in users
+        ]

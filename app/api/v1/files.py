@@ -50,7 +50,7 @@ async def train_file(
     # Access control
     if not (
         "ADMIN" in user_roles
-        or case.owner_id == user.id
+        or user in case.managers
         or user in case.users
     ):
         raise HTTPException(403, "Access denied")
@@ -132,7 +132,7 @@ def view_file(
     if (
         "ADMIN" in user_roles
         or "MASTER_ADMIN" in user_roles
-        or case.owner_id == current_user.id
+        or current_user in case.managers
         or current_user in case.users
     ):
         return file_service.view_file(file_id)

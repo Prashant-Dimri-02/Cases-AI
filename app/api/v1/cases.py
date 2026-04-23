@@ -1,7 +1,7 @@
 # app/api/v1/cases.py
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Form, HTTPException,Query, UploadFile,File
+from fastapi import APIRouter, Body, Depends, Form, HTTPException,Query, UploadFile,File
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from app.core.dependencies import get_db
@@ -71,7 +71,7 @@ def list_files_requiring_approval(
 async def create_case(
     case_name: str = Form(...),
     description: str | None = Form(None),
-    owner_id: int = Form(...),
+    manager_ids: List[int] = Form(...),
     file: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     current_user = Depends(require_role(["ADMIN"])),
@@ -81,12 +81,18 @@ async def create_case(
     # create case synchronously (keeps your existing create_case behavior)
     case = svc.create_case_from_fields(case_name=case_name, description=description)
 
-    owner = db.query(User).filter(User.id == owner_id).first()
+    managers = db.query(User).filter(User.id.in_(manager_ids)).all()
 
-    if not owner:
-        raise HTTPException(400, "Invalid owner")
+    if not managers:
+        raise HTTPException(400, "Invalid managers")
 
-    case.owner_id = owner_id
+    for manager in managers:
+        roles = [r.name for r in manager.roles]
+        if "MANAGER" not in roles:
+            raise HTTPException(400, f"{manager.email} is not a manager")
+
+    case.managers.extend(managers)
+
     db.commit()
     db.refresh(case)
 
@@ -175,7 +181,7 @@ def list_cases(
 def get_case(
     case_id: int,
     db: Session = Depends(get_db),
-    current_user = Depends(require_role(["ADMIN","MANAGER", "USER"])),
+    current_user = Depends(require_role(["ADMIN","MANAGER", "MEMBER"])),
 ):
     svc = CaseService(db)
 
@@ -201,7 +207,7 @@ def list_case_files(
 @router.post("/{case_id}/assign-users")
 def assign_users(
     case_id: int,
-    user_ids: list[int],
+    user_ids: list[int] = Body(...),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
 ):
@@ -213,7 +219,7 @@ def assign_users(
     user_roles = [r.name for r in current_user.roles]
 
     # Only ADMIN or MANAGER (owner) can assign
-    if "ADMIN" not in user_roles and case.owner_id != current_user.id:
+    if "ADMIN" not in user_roles and current_user not in case.managers:
         raise HTTPException(403, "Not allowed")
 
     users = db.query(User).filter(User.id.in_(user_ids)).all()
@@ -226,7 +232,7 @@ def assign_users(
         if user in case.users:
             continue  # skip already assigned users
         roles = [r.name for r in user.roles]
-        if "USER" not in roles:
+        if "MEMBER" not in roles:
             raise HTTPException(400, f"{user.email} is not a normal user")
 
     case.users.extend(users)
@@ -234,30 +240,34 @@ def assign_users(
 
     return {"message": "Users assigned successfully"}
 
-@router.post("/{case_id}/assign-manager")
-def assign_manager(
+@router.post("/{case_id}/assign-managers")
+def assign_managers(
     case_id: int,
-    manager_id: int,
+    manager_ids: list[int] = Body(...),
     db: Session = Depends(get_db),
     current_user = Depends(require_role(["ADMIN"]))
 ):
-
     case = db.query(Case).filter(Case.id == case_id).first()
 
     if not case:
         raise HTTPException(404, "Case not found")
 
-    manager = db.query(User).filter(User.id == manager_id).first()
+    managers = db.query(User).filter(User.id.in_(manager_ids)).all()
 
-    if not manager:
-        raise HTTPException(404, "Manager not found")
+    if not managers:
+        raise HTTPException(400, "Invalid managers")
 
-    manager_roles = [r.name for r in manager.roles]
+    for manager in managers:
+        roles = [r.name for r in manager.roles]
 
-    if "MANAGER" not in manager_roles:
-        raise HTTPException(400, "User is not a manager")
+        if "MANAGER" not in roles:
+            raise HTTPException(400, f"{manager.email} is not a manager")
 
-    case.owner_id = manager_id
+        if manager in case.managers:
+            continue
+
+        case.managers.append(manager)
+
     db.commit()
 
-    return {"message": "Manager assigned successfully"}
+    return {"message": "Managers assigned successfully"}

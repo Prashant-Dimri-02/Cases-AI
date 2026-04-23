@@ -56,8 +56,8 @@ def require_case_access():
         if "ADMIN" in user_roles or "MASTER_ADMIN" in user_roles:
             return case
 
-        # OWNER → full access
-        if case.owner_id == current_user.id:
+        # MANAGER → full access
+        if current_user in case.managers:
             return case
 
         # MEMBER → assigned users
