@@ -175,7 +175,8 @@ def join_meeting_service(meeting_id: int, db: Session):
     response = requests.post(
         "https://prashanttest01.duckdns.org:9441/joinCall",
         json=payload,
-        timeout=15
+        timeout=15,
+        verify=False
     )
 
     response.raise_for_status()
@@ -191,3 +192,11 @@ def join_meeting_service(meeting_id: int, db: Session):
     db.commit()
 
     return meeting
+
+
+
+
+
+
+
+

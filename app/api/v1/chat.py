@@ -10,6 +10,8 @@ from app.schemas.chat import (
     ChatMessageResponse
 )
 from app.services.chat_service import ChatService
+from app.core.dependencies import get_current_user
+from app.models.user import User
 
 router = APIRouter(tags=["Chat"])
 
@@ -17,10 +19,14 @@ router = APIRouter(tags=["Chat"])
 @router.post("/open", response_model=OpenChatResponse)
 def open_chat(
     caseid: int = Header(...),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     service = ChatService(db)
-    session, messages = service.open_session(caseid)
+    session, messages = service.open_session(
+        caseid,
+        current_user.id
+    )
 
     return {
         "session_id": session.id,
@@ -39,11 +45,13 @@ def open_chat(
 def send_message(
     payload: ChatMessageRequest,
     caseid: int = Header(...),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-):
+    ):
     service = ChatService(db)
     answer = service.send_message(
         case_id=caseid,
+        user_id=current_user.id,
         session_id=payload.session_id,
         message=payload.message
     )

@@ -1,5 +1,6 @@
 # app/api/v1/cases.py
 from datetime import datetime
+from multiprocessing import managers
 
 from fastapi import APIRouter, Body, Depends, Form, HTTPException,Query, UploadFile,File
 from sqlalchemy import func
@@ -67,11 +68,10 @@ def list_files_requiring_approval(
         })
 
     return response
+
 @router.post("", response_model=CreateCaseOut)
 async def create_case(
     case_name: str = Form(...),
-    description: str | None = Form(None),
-    manager_ids: List[int] = Form(...),
     file: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     current_user = Depends(require_role(["ADMIN"])),
@@ -79,24 +79,8 @@ async def create_case(
     svc = CaseService(db)
     hnd=FileService(db)
     # create case synchronously (keeps your existing create_case behavior)
-    case = svc.create_case_from_fields(case_name=case_name, description=description)
-
-    managers = db.query(User).filter(User.id.in_(manager_ids)).all()
-
-    if not managers:
-        raise HTTPException(400, "Invalid managers")
-
-    for manager in managers:
-        roles = [r.name for r in manager.roles]
-        if "MANAGER" not in roles:
-            raise HTTPException(400, f"{manager.email} is not a manager")
-
-    case.managers.extend(managers)
-
-    db.commit()
-    db.refresh(case)
-
-    file_out = None
+    case = svc.create_case_from_fields(case_name=case_name)
+    
     extracted_metadata = None
 
     if file:
@@ -111,8 +95,18 @@ async def create_case(
         file_id = file_upload_result["file_id"]
 
         # 2) create embeddings and process file (async)
-        processing_result = await hnd.process_file_embeddings(file_id=file_id)
-        print("File processing result:", processing_result)  # log the processing result for debugging
+        
+        file = (
+            db.query(CaseFile)
+            .filter(CaseFile.id == file_id)
+            .with_for_update()
+            .first()
+        )
+        file.status = FileStatus.APPROVED
+        db.commit()
+        db.refresh(file)
+        processing_result = await hnd.process_file_embeddings_safe(file_id=file_id)
+        
         if not processing_result.get("processed"):
             # continue and return partial result; or raise if you need strict success
             # we'll return partial result
@@ -120,22 +114,22 @@ async def create_case(
         else:
             # 3) Run QA/AI to extract structured metadata from saved chunks/embeddings
             try:
-                print("i worked")
                 extracted_metadata = svc.qa_service.extract_case_metadata_for_file(file_id=file_id)
-                print("Extracted metadata:", extracted_metadata )
             except Exception as e:
                 # log the error, return partial
                 extracted_metadata = None
 
         # Build file_out to include in response
     if extracted_metadata:
-        svc.save_case_metadata(case.id, extracted_metadata)
+        svc.qa_service.merge_case_metadata_for_case(
+            case.id,
+            extracted_metadata
+        )
 
     return {
         "id": case.id,
         "case_name": case.case_name,
         "case_no": case.case_no,
-        "description": case.description,
         "created_at": case.created_at,
     }
 

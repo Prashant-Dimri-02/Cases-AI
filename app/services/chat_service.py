@@ -11,12 +11,13 @@ class ChatService:
     def __init__(self, db: Session):
         self.db = db
 
-    def open_session(self, case_id: int):
+    def open_session(self, case_id: int, user_id: int):
         # 1️⃣ Find existing open session
         session = (
             self.db.query(models.ChatSession)
             .filter(
                 models.ChatSession.case_id == case_id,
+                models.ChatSession.user_id == user_id,
                 models.ChatSession.closed == False
             )
             .order_by(models.ChatSession.created_at.desc())
@@ -25,7 +26,10 @@ class ChatService:
 
         # 2️⃣ If none exists, create new
         if not session:
-            session = models.ChatSession(case_id=case_id)
+            session = models.ChatSession(
+                case_id=case_id,
+                user_id=user_id
+            )
             self.db.add(session)
             self.db.commit()
             self.db.refresh(session)
@@ -40,12 +44,19 @@ class ChatService:
 
         return session, messages
 
-    def send_message(self, case_id: int, session_id: int, message: str) -> str:
+    def send_message(
+        self,
+        case_id: int,
+        user_id: int,
+        session_id: int,
+        message: str
+    ):
         session = (
             self.db.query(models.ChatSession)
             .filter(
                 models.ChatSession.id == session_id,
                 models.ChatSession.case_id == case_id,
+                models.ChatSession.user_id == user_id,
                 models.ChatSession.closed == False
             )
             .first()
@@ -67,7 +78,7 @@ class ChatService:
 
         # Generate answer
         qa = QAService(self.db)
-        result = qa.answer_question(
+        result = qa.answer_chat_question(
             case_id=case_id,
             session_id=session.id,
             question=message

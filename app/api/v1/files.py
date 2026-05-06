@@ -9,6 +9,7 @@ from app.models.case_file import CaseFile, FileStatus
 from app.models.case import Case
 from app.services.file_service import FileService
 from app.schemas.file import FileUploadResponse
+from app.services.case_service import CaseService
 from datetime import datetime
 router = APIRouter()
 
@@ -68,8 +69,11 @@ async def train_file(
         file.status = FileStatus.APPROVED
         db.commit()
 
-        # 🚀 Let service handle PROCESSING → PROCESSED
-        return await svc.process_file_embeddings_safe(file_id)
+        case_svc = CaseService(db)
+
+        result = await case_svc.process_file_and_extract_metadata(file_id)
+
+        return result
 
     # 👤 USER FLOW
     if file.status != FileStatus.DRAFT:

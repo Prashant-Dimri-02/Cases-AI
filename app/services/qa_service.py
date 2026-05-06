@@ -82,192 +82,35 @@ class QAService:
     # -------------------------
     # Q/A with RAG
     # -------------------------
-    def answer_question(
+    def _get_chat_history(self, session_id: int):
+        recent_msgs = (
+            self.db.query(models.ChatMessage)
+            .filter(models.ChatMessage.session_id == session_id)
+            .order_by(models.ChatMessage.created_at.asc())
+            .all()
+        )
+
+        history = []
+
+        for msg in recent_msgs:
+            history.append({
+                "role": msg.role,
+                "content": msg.content
+            })
+
+        return history
+    
+    def _generate_rag_answer(
         self,
         case_id: int,
         question: str,
-        session_id: Optional[int] = None,
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Answer a question using retrieval-augmented generation from embeddings of case files.
-        Perfectly handles noisy speech + real ChatGPT-style casual conversation.
-        """
-        # ------------------------------------------------------------------
-        # 1. Basic cleaning
-        # ------------------------------------------------------------------
-        question = self._clean_question(question).strip()
-        if not question:
-            return {"answer": "Sorry, I didn't catch that. Could you please repeat?", "source_chunks": []}
-
-        # ------------------------------------------------------------------
-        # 2. ADD TO KNOWLEDGE BASE (unchanged)
-        # ------------------------------------------------------------------
-        def _is_add_intent_and_extract(q: str) -> Optional[str]:
-            pattern = re.compile(
-                r'add\b.*?(?:knowledge\s*base|knowledge|db|database|kb)[\s\:\-]*\s*(.*)',
-                flags=re.I | re.S
-            )
-            m = pattern.search(q)
-            if m and m.group(1).strip():
-                return m.group(1).strip()
-            simple_pattern = re.compile(r'add(?: this)?\s*[:\-]\s*(.*)', flags=re.I | re.S)
-            m2 = simple_pattern.search(q)
-            if m2 and m2.group(1).strip():
-                return m2.group(1).strip()
-            return None
-
-        add_content = _is_add_intent_and_extract(question)
-        if add_content is not None:
-            # [YOUR EXISTING ADD-TO-KB CODE – exactly the same as before]
-            try:
-                case_file = (
-                    self.db.query(models.case_file.CaseFile)
-                    .filter(models.case_file.CaseFile.case_id == case_id)
-                    .order_by(models.case_file.CaseFile.id.asc())
-                    .first()
-                )
-                if case_file is None:
-                    return {
-                        "answer": "No case file found for this case id. Cannot add to knowledge base.",
-                        "source_chunks": [],
-                    }
-                embedding_row = (
-                    self.db.query(models.embedding.Embedding)
-                    .filter(models.embedding.Embedding.file_id == case_file.id)
-                    .order_by(models.embedding.Embedding.id.asc())
-                    .first()
-                )
-                embedding_service = EmbeddingService()
-                if embedding_row is None:
-                    new_chunk_text = add_content
-                    new_vector = embedding_service.create_embedding(new_chunk_text)
-                    new_embedding = models.embedding.Embedding(
-                        file_id=case_file.id,
-                        chunk_text=new_chunk_text,
-                        vector=new_vector,
-                    )
-                    self.db.add(new_embedding)
-                    self.db.commit()
-                    return {
-                        "answer": "Successfully added to knowledge base and created new embedding.",
-                        "source_chunks": [new_embedding.id],
-                    }
-                combined_text = embedding_row.chunk_text + "\n\n" + add_content
-                new_vector = embedding_service.create_embedding(combined_text)
-                embedding_row.chunk_text = combined_text
-                embedding_row.vector = new_vector
-                self.db.add(embedding_row)
-                self.db.commit()
-                return {
-                    "answer": "Successfully added to knowledge base and updated embedding.",
-                    "source_chunks": [embedding_row.id],
-                }
-            except Exception as e:
-                logger.exception("Failed to add content to knowledge base: %s", e)
-                self.db.rollback()
-                return {
-                    "answer": f"Failed to add to knowledge base: {str(e)}",
-                    "source_chunks": [],
-                }
-
-        # ------------------------------------------------------------------
-        # 3. REFINE + STRICT greeting detection (this is the fix)
-        # ------------------------------------------------------------------
-        refine_prompt = f"""
-    You are an expert at cleaning noisy Azure Speech-to-Text output.
-
-    The text below is a **single noisy sentence** from a legal assistant bot.
-
-    Tasks:
-    1. Fix speech recognition errors (e.g. "loyen" → "", "lawyan" → "", "policy bot" → "").
-    2. Remove fillers (um, uh, like, you know...).
-    3. Make it clear and natural.
-    4. Return **ONLY** one of the following (nothing else):
-
-    • The exact word `GREETING` → **only** if the entire sentence is pure casual talk with **zero** legal or command intent.
-    • Otherwise return the cleaned legal question.
-
-    Examples where you **MUST** return `GREETING`:
-    - "hello"
-    - "hi"
-    - "how are you"
-    - "how are you doing"
-    - "thanks"
-    - "good morning"
-
-    Examples where you **MUST NOT** return `GREETING` (return the cleaned question instead):
-    - "hi what is the court date"
-    - "hello show me the transcript"
-    - "how are you doing with the case file"
-
-    Noisy transcript: {question}
-    """
-
-        refine_response = client.chat.completions.create(
-            model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
-            messages=[{"role": "user", "content": refine_prompt}],
-            temperature=0,
-            max_tokens=120,
-        )
-        refined = refine_response.choices[0].message.content.strip()
-
-        # === EXTRA SAFETY CHECK (prevents the exact bug you showed) ===
-        intent_keywords = {
-            "transcript", "testing", "bot", "qa", "case", "file", "court", "date",
-            "document", "show me", "what is", "tell me", "question", "answer"
-        }
-        lower_original = question.lower()
-        lower_refined = refined.lower()
-
-        has_intent = any(kw in lower_original for kw in intent_keywords) or \
-                    any(kw in lower_refined for kw in intent_keywords)
-
-        if refined.upper() == "GREETING" and has_intent:
-            refined = question  # force real question path
-
-        if refined.upper() == "GREETING":
-            greeting_response = client.chat.completions.create(
-                model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a natural human assistant. "
-                            "Respond to greetings in a casual, friendly, and varied way. "
-                            "DO NOT repeat the same sentence every time. "
-                            "Avoid generic templates like 'How can I help you today?' unless it fits naturally."
-                        )
-                    },
-                    {
-                        "role": "user",
-                        "content": f"User said: {question}"
-                    }
-                ],
-                temperature=0.9,   # 🔥 IMPORTANT (increase randomness)
-                max_tokens=50,
-            )
-
-            polite_reply = greeting_response.choices[0].message.content.strip()
-
-            if session_id is not None:
-                self.db.add(models.ChatMessage(
-                    session_id=session_id,
-                    role="assistant",
-                    content=polite_reply
-                ))
-                self.db.commit()
-
-            return {"answer": polite_reply, "source_chunks": []}
-        # Use the refined (clean) question from now on
-        question = refined
-
-        # ------------------------------------------------------------------
-        # 4. NORMAL RAG FLOW (unchanged)
-        # ------------------------------------------------------------------
+        conversation_history: Optional[List[Dict[str, str]]] = None
+    ):
         embedding_response = client.embeddings.create(
             model=settings.AZURE_OPENAI_EMBEDDING_DEPLOYMENT,
             input=question,
         )
+
         question_vector = embedding_response.data[0].embedding
 
         embeddings = (
@@ -276,93 +119,91 @@ class QAService:
             .filter(models.case_file.CaseFile.case_id == case_id)
             .all()
         )
+
         if not embeddings:
-            return {"answer": "There are no case files for this case yet.", "source_chunks": []}
+            return {
+                "answer": "There are no case files for this case yet.",
+                "source_chunks": []
+            }
 
         vectors = [e.vector for e in embeddings]
         similarities = self._cos_similarities(question_vector, vectors)
 
         TOP_K = 4
         keywords = set(question.lower().split())
+
         scores = []
+
         for i, emb in enumerate(embeddings):
             sim = similarities[i]
             text = emb.chunk_text.lower()
-            keyword_score = sum(1 for k in keywords if k in text)
+
+            keyword_score = sum(
+                1 for k in keywords if k in text
+            )
+
             final_score = sim + (0.05 * keyword_score)
+
             scores.append((i, final_score))
 
         SIM_THRESHOLD = 0.20
-        filtered = [(i, score) for i, score in scores if similarities[i] > SIM_THRESHOLD]
+
+        filtered = [
+            (i, score)
+            for i, score in scores
+            if similarities[i] > SIM_THRESHOLD
+        ]
+
         if not filtered:
             return {
                 "answer": "There is nothing related to this question in case files.",
-                "source_chunks": [],
+                "source_chunks": []
             }
 
-        top_indices = [i for i, _ in sorted(filtered, key=lambda x: x[1], reverse=True)[:TOP_K]]
-        candidate_chunks = [embeddings[i].chunk_text for i in top_indices]
-        candidate_text = "\n\n".join(f"[{idx}] {text}" for idx, text in enumerate(candidate_chunks))
+        top_indices = [
+            i for i, _ in sorted(
+                filtered,
+                key=lambda x: x[1],
+                reverse=True
+            )[:TOP_K]
+        ]
 
-        rerank_prompt = f"""
-    Which of the following document chunks best answers the question?
-    Question: {question}
-
-    Chunks:
-    {candidate_text}
-
-    Return the indices of the most relevant chunks as a JSON list like: [0,2,3]
-    """
-        rerank_response = client.chat.completions.create(
-            model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
-            messages=[{"role": "user", "content": rerank_prompt}],
-            temperature=0,
-        )
-        reranked = rerank_response.choices[0].message.content.strip()
-        try:
-            rerank_indices = json.loads(reranked)
-        except:
-            rerank_indices = list(range(len(candidate_chunks)))
+        candidate_chunks = [
+            embeddings[i].chunk_text
+            for i in top_indices
+        ]
 
         rag_context = "\n\n".join(
-            f"[SOURCE {idx+1}]\n{candidate_chunks[i]}"
-            for idx, i in enumerate(rerank_indices[:4])
+            f"[SOURCE {idx+1}]\n{chunk}"
+            for idx, chunk in enumerate(candidate_chunks)
         )
 
-        # Final answer
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "You are a helpful legal AI assistant.\n\n"
-                    "Rules:\n"
-                    "1. Answer ONLY using the provided context from case files.\n"
-                    "2. If the context does not contain the answer, reply exactly: "
-                    "'There is nothing related to this question in case files.'\n"
-                    "3. Do NOT invent or assume any legal facts.\n"
-                    "4. Summarize clearly and professionally."
-                ),
+                    "You are a helpful legal AI assistant.\n"
+                    "Use previous conversation history for conversational questions.\n"
+                    "Use case file context for legal/case-specific questions.\n"
+                    "If user asks about earlier conversation, use chat history.\n"
+                    "If user asks about case facts, use case context.\n"
+                    "Do not invent facts."
+                )
             }
         ]
 
-        if session_id is not None:
-            recent_msgs = (
-                self.db.query(models.ChatMessage)
-                .filter(models.ChatMessage.session_id == session_id)
-                .order_by(models.ChatMessage.created_at.desc())
-                .limit(6)
-                .all()
-            )
-            recent_msgs = list(reversed(recent_msgs))
-            for msg in recent_msgs:
-                messages.append({"role": getattr(msg, "role", "user"), "content": getattr(msg, "content", "")})
+        if conversation_history:
+            messages.extend(conversation_history)
 
-        messages.append(
-            {
-                "role": "user",
-                "content": f"Context:\n{rag_context}\n\nQuestion:\n{question}",
-            }
-        )
+        messages.append({
+            "role": "system",
+            "content": f"Case file context:\n{rag_context}"
+        })
+
+        messages.append({
+            "role": "user",
+            "content": question
+        })
 
         completion = client.chat.completions.create(
             model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
@@ -370,29 +211,444 @@ class QAService:
             max_tokens=300,
             temperature=0,
         )
-        answer_text = completion.choices[0].message.content.strip()
 
-        if session_id is not None:
-            try:
-                self.db.add(
-                    models.ChatMessage(
-                        session_id=session_id,
-                        role="assistant",
-                        content=answer_text,
-                    )
-                )
-                self.db.commit()
-            except Exception as e:
-                logger.exception("Failed to save assistant message: %s", e)
-                self.db.rollback()
+        answer_text = completion.choices[0].message.content.strip()
 
         return {
             "answer": answer_text,
             "source_chunks": [
-                embeddings[top_indices[i]].id for i in rerank_indices[:4]
-            ],
+                embeddings[i].id for i in top_indices
+            ]
         }
+        
+    def answer_chat_question(
+        self,
+        case_id: int,
+        question: str,
+        session_id: int
+    ):
+        # ----------------------------------------
+        # 1. Clean question
+        # ----------------------------------------
+        question = self._clean_question(question).strip()
+
+        if not question:
+            return {
+                "answer": "Sorry, I didn't catch that.",
+                "source_chunks": []
+            }
+
+        # ----------------------------------------
+        # 2. Get previous chat history
+        # ----------------------------------------
+        history = self._get_chat_history(session_id)
+
+        # ----------------------------------------
+        # 3. Intent classification
+        # ----------------------------------------
+        classify_prompt = f"""
+    You are classifying chat intent.
+
+    Return ONLY one of these exact words:
+
+    GREETING
+    MEMORY
+    FOLLOW_UP
+    QUESTION
+
+    Rules:
+
+    GREETING:
+    - hello
+    - hi
+    - good morning
+    - how are you
+
+    MEMORY:
+    User asks about previous conversation/history.
+    Examples:
+    - what was my previous message
+    - what did i ask before
+    - what was my first question
+    - what did you tell me
+
+    FOLLOW_UP:
+    User refers to previous answer/context.
+    Examples:
+    - explain this
+    - tell this in short
+    - make it shorter
+    - simplify this
+    - can you explain that
+    - what do you mean
+    - summarize it shortly
+    - tell me briefly
+
+    QUESTION:
+    Standalone case/legal question.
+
+    Message:
+    {question}
+    """
+
+        classify_response = client.chat.completions.create(
+            model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
+            messages=[
+                {
+                    "role": "user",
+                    "content": classify_prompt
+                }
+            ],
+            temperature=0,
+            max_tokens=20
+        )
+
+        intent = classify_response.choices[0].message.content.strip().upper()
+
+        # fallback safety
+        valid_intents = {
+            "GREETING",
+            "MEMORY",
+            "FOLLOW_UP",
+            "QUESTION"
+        }
+
+        if intent not in valid_intents:
+            intent = "QUESTION"
+
+        # ----------------------------------------
+        # 4. GREETING handling
+        # ----------------------------------------
+        if intent == "GREETING":
+            greeting_response = client.chat.completions.create(
+                model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Reply naturally and conversationally to greetings. "
+                            "Be friendly and human-like."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": question
+                    }
+                ],
+                temperature=0.8,
+                max_tokens=50
+            )
+
+            answer = greeting_response.choices[0].message.content.strip()
+
+            self.db.add(
+                models.ChatMessage(
+                    session_id=session_id,
+                    role="assistant",
+                    content=answer
+                )
+            )
+            self.db.commit()
+
+            return {
+                "answer": answer,
+                "source_chunks": []
+            }
+
+        # ----------------------------------------
+        # 5. MEMORY handling
+        # ----------------------------------------
+        if intent == "MEMORY":
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "Answer ONLY using previous conversation history. "
+                        "Use earlier chat messages carefully."
+                    )
+                }
+            ]
+
+            messages.extend(history)
+
+            messages.append({
+                "role": "user",
+                "content": question
+            })
+
+            completion = client.chat.completions.create(
+                model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
+                messages=messages,
+                temperature=0,
+                max_tokens=200
+            )
+
+            answer = completion.choices[0].message.content.strip()
+
+            self.db.add(
+                models.ChatMessage(
+                    session_id=session_id,
+                    role="assistant",
+                    content=answer
+                )
+            )
+            self.db.commit()
+
+            return {
+                "answer": answer,
+                "source_chunks": []
+            }
+
+        # ----------------------------------------
+        # 6. FOLLOW-UP handling
+        # ----------------------------------------
+        if intent == "FOLLOW_UP":
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "The user is referring to previous conversation context. "
+                        "Use previous messages to resolve references like "
+                        "'this', 'that', 'it'."
+                    )
+                }
+            ]
+
+            messages.extend(history)
+
+            messages.append({
+                "role": "user",
+                "content": question
+            })
+
+            completion = client.chat.completions.create(
+                model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
+                messages=messages,
+                temperature=0,
+                max_tokens=200
+            )
+
+            answer = completion.choices[0].message.content.strip()
+
+            self.db.add(
+                models.ChatMessage(
+                    session_id=session_id,
+                    role="assistant",
+                    content=answer
+                )
+            )
+            self.db.commit()
+
+            return {
+                "answer": answer,
+                "source_chunks": []
+            }
+
+        # ----------------------------------------
+        # 7. Normal RAG question
+        # ----------------------------------------
+        result = self._generate_rag_answer(
+            case_id=case_id,
+            question=question,
+            conversation_history=history
+        )
+
+        # ----------------------------------------
+        # 8. Save assistant answer
+        # ----------------------------------------
+        try:
+            self.db.add(
+                models.ChatMessage(
+                    session_id=session_id,
+                    role="assistant",
+                    content=result["answer"]
+                )
+            )
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+
+        return result
     
+    def answer_voice_question(
+        self,
+        case_id: int,
+        question: str
+    ):
+        # ----------------------------------------
+        # 1. Clean raw speech text
+        # ----------------------------------------
+        question = self._clean_question(question).strip()
+
+        if not question:
+            return {
+                "answer": "Sorry, I didn't catch that. Could you repeat?",
+                "source_chunks": []
+            }
+
+        # ----------------------------------------
+        # 2. Refine + classify intent
+        # ----------------------------------------
+        refine_prompt = f"""
+    You are an AI assistant that processes speech-to-text input.
+
+    Your tasks:
+    1. Fix speech recognition mistakes
+    2. Remove filler words
+    3. Keep the original meaning
+    4. Detect whether the user is:
+    - GREETING
+    - GENERAL_CHAT
+    - CASE_QUERY
+
+    Rules:
+    - GREETING:
+    hello, hi, good morning, hey, thank you, bye, how are you
+
+    - GENERAL_CHAT:
+    questions not related to case files
+    casual conversation
+    generic AI questions
+
+    - CASE_QUERY:
+    questions asking about the uploaded case/documents/context
+
+    Return ONLY valid JSON.
+
+    Format:
+    {{
+        "intent": "GREETING | GENERAL_CHAT | CASE_QUERY",
+        "refined_question": "cleaned question"
+    }}
+
+    Input:
+    {question}
+    """
+
+        refine_response = client.chat.completions.create(
+            model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a speech-to-text refinement and "
+                        "intent classification engine."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": refine_prompt
+                }
+            ],
+            temperature=0,
+            max_tokens=150,
+            response_format={"type": "json_object"}
+        )
+
+        import json
+
+        try:
+            parsed = json.loads(
+                refine_response.choices[0].message.content
+            )
+
+            intent = parsed.get("intent", "").strip().upper()
+            refined_question = (
+                parsed.get("refined_question", question).strip()
+            )
+
+        except Exception:
+            intent = "CASE_QUERY"
+            refined_question = question
+
+        # ----------------------------------------
+        # 3. Greeting handling
+        # ----------------------------------------
+        if intent == "GREETING":
+
+            greeting_response = client.chat.completions.create(
+                model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": """
+    You are a professional AI voice assistant.
+
+    Rules:
+    - Keep responses short
+    - Natural conversational tone
+    - Voice friendly
+    - Do not give long explanations
+    """
+                    },
+                    {
+                        "role": "user",
+                        "content": refined_question
+                    }
+                ],
+                temperature=0.5,
+                max_tokens=60
+            )
+
+            return {
+                "answer": (
+                    greeting_response
+                    .choices[0]
+                    .message
+                    .content
+                    .strip()
+                ),
+                "source_chunks": []
+            }
+
+        # ----------------------------------------
+        # 4. General chat handling
+        # ----------------------------------------
+        if intent == "GENERAL_CHAT":
+
+            general_response = client.chat.completions.create(
+                model=settings.AZURE_OPENAI_CHAT_DEPLOYMENT,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": """
+    You are a helpful AI voice assistant.
+
+    Rules:
+    - Keep answers concise
+    - Voice friendly
+    - Natural conversational style
+    - Avoid very long answers
+    """
+                    },
+                    {
+                        "role": "user",
+                        "content": refined_question
+                    }
+                ],
+                temperature=0.5,
+                max_tokens=120
+            )
+
+            return {
+                "answer": (
+                    general_response
+                    .choices[0]
+                    .message
+                    .content
+                    .strip()
+                ),
+                "source_chunks": []
+            }
+
+        # ----------------------------------------
+        # 5. Case-specific RAG answer
+        # ----------------------------------------
+        return self._generate_rag_answer(
+            case_id=case_id,
+            question=refined_question
+        )
+
     # -------------------------
     # NEW: Case metadata extraction
     # -------------------------

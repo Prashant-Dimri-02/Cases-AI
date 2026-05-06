@@ -18,6 +18,9 @@ class AuthService:
         if existing:
             raise ValueError("User exists")
 
+        # 🔥 Check if this is the first user
+        user_count = self.db.query(models.user.User).count()
+
         hashed = get_password_hash(payload.password)
 
         new_user = models.user.User(
@@ -30,14 +33,21 @@ class AuthService:
         self.db.commit()
         self.db.refresh(new_user)
 
-        # ✅ Assign default role = MEMBER
-        role = self.db.query(models.role.Role).filter_by(name="MEMBER").first()
+        # 🔥 Decide role
+        if user_count == 0:
+            role_name = "ADMIN"
+        else:
+            role_name = "MEMBER"
+
+        role = self.db.query(models.role.Role).filter_by(name=role_name).first()
+
         if role:
             new_user.roles.append(role)
             self.db.commit()
             self.db.refresh(new_user)
+        else:
+            raise ValueError(f"{role_name} role not found in DB")
 
-        # ✅ IMPORTANT: Return serialized response
         return {
             "id": new_user.id,
             "email": new_user.email,
@@ -178,3 +188,79 @@ class AuthService:
             }
             for u in users
         ]
+        
+    def make_manager(self, current_user, user_id: int):
+        current_roles = {r.name for r in current_user.roles}
+
+        # Only ADMIN can make manager
+        if "ADMIN" not in current_roles:
+            raise HTTPException(403, "Not allowed")
+
+        user = self.db.query(models.user.User).filter(models.user.User.id == user_id).first()
+
+        if not user:
+            raise HTTPException(404, "User not found")
+
+        manager_role = self.db.query(models.role.Role).filter(models.role.Role.name == "MANAGER").first()
+
+        if not manager_role:
+            raise HTTPException(500, "MANAGER role not found")
+
+        if manager_role in user.roles:
+            raise HTTPException(400, "User is already a manager")
+
+        user.roles.append(manager_role)
+        self.db.commit()
+        self.db.refresh(user)
+        
+        # migrate case assignments
+        cases = (
+            self.db.query(models.case.Case)
+            .filter(
+                models.case.Case.users.any(
+                    models.user.User.id == user.id
+                )
+            )
+            .all()
+        )
+
+        for case in cases:
+            # remove from users relation
+            if user in case.users:
+                case.users.remove(user)
+
+            # add to managers relation
+            if user not in case.managers:
+                case.managers.append(user)
+
+        # remove MEMBER role
+        member_role = (
+            self.db.query(models.role.Role)
+            .filter(models.role.Role.name == "MEMBER")
+            .first()
+        )
+
+        if member_role in user.roles:
+            user.roles.remove(member_role)
+
+        self.db.commit()
+        self.db.refresh(user)
+        
+
+        return {
+            "id": user.id,
+            "email": user.email,
+            "full_name": user.full_name,
+            "roles": [r.name for r in user.roles],
+        }
+def seed_roles(db):
+    roles = ["ADMIN", "MANAGER", "MEMBER"]
+
+    existing_roles = db.query(models.role.Role).count()
+
+    if existing_roles == 0:
+        for role_name in roles:
+            role = models.role.Role(name=role_name)
+            db.add(role)
+
+        db.commit()

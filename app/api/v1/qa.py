@@ -14,7 +14,7 @@ def ask_question(
     db: Session = Depends(get_db),
 ):
     service = QAService(db)
-    result = service.answer_question(
+    result = service.answer_voice_question(
         case_id=payload.case_id,
         question=payload.question,
     )
@@ -48,7 +48,7 @@ def ask(data: dict, db: Session = Depends(get_db)):
     
     service = QAService(db)
 
-    result = service.answer_question(
+    result = service.answer_voice_question(
         case_id=case_id,
         question=transcript
     )

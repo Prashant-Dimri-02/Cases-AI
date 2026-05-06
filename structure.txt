@@ -1,3 +1,6 @@
+PS D:\Rag Backend> tree /F /A                                                                        
+Folder PATH listing for volume New Volume
+Volume serial number is 7278-6406
 D:.
 |   .env
 |   .gitignore
@@ -7,22 +10,30 @@ D:.
 |   README.md
 |   requirements.txt
 |   structure.txt
-|
+|   
 +---alembic
 |   |   env.py
 |   |   README
 |   |   script.py.mako
-|   |
+|   |   
 |   +---versions
-|   |   |   147c7b14188f_fixed_tables_removed_group.py
-|   |   |
-|
+|   |   |   246bc42ce503_add_file_path_to_case_files.py
+|   |   |   43d2ad07dc61_add_file_size_to_case_files.py
+|   |   |   4703a5ca5b67_use_jsonb_for_case_metadata_parties.py
+|   |   |   48ba61975411_initial_tables.py
+|   |   |   56a09962e8ec_fixed.py
+|   |   |   a09ad455b4e6_merge_heads.py
+|   |   |   a8b2aa268a86_add_chat_sessions_and_chat_messages.py
+|   |   |   c8973a91e248_fixed.py
+|   |   |   d4c4538475a2_initial_schema.py
+|   |   |   e2dbeff7d831_add_content_type.py
+|   |   |   
 +---app
 |   |   main.py
-|   |
+|   |   
 |   +---api
 |   |   |   api_router.py
-|   |   |
+|   |   |   
 |   |   +---v1
 |   |   |   |   auth.py
 |   |   |   |   cases.py
@@ -33,7 +44,8 @@ D:.
 |   |   |   |   mom.py
 |   |   |   |   qa.py
 |   |   |   |   users.py
-|   |
+|   |   |   |   
+|   |           
 |   +---core
 |   |   |   azure_openai.py
 |   |   |   config.py
@@ -42,16 +54,16 @@ D:.
 |   |   |   logging.py
 |   |   |   scheduler.py
 |   |   |   security.py
-|   |   |
-|   |
+|   |           
 |   +---db
 |   |   |   base.py
 |   |   |   init_db.py
 |   |   |   session.py
-|   |   |
-|   |
+|   |   |   
+|   |           
 |   +---models
 |   |   |   associations.py
+|   |   |   associations_case_manager.py
 |   |   |   associations_case_user.py
 |   |   |   case.py
 |   |   |   case_file.py
@@ -64,8 +76,8 @@ D:.
 |   |   |   upcoming_meeting.py
 |   |   |   user.py
 |   |   |   __init__.py
-|   |   |
-|   |
+|   |   |   
+|   |           
 |   +---schemas
 |   |   |   auth.py
 |   |   |   case.py
@@ -74,8 +86,8 @@ D:.
 |   |   |   meeting.py
 |   |   |   qa.py
 |   |   |   user.py
-|   |   |
-|   |
+|   |   |   
+|   |           
 |   +---services
 |   |   |   auth_service.py
 |   |   |   case_ppt_service.py
@@ -87,21 +99,27 @@ D:.
 |   |   |   graph_meeting_service.py
 |   |   |   mom_service.py
 |   |   |   qa_service.py
-|   |   |
-|   |
+|   |   |   
+|   |           
 |   +---tests
 |   |       test_auth.py
 |   |       test_cases.py
 |   |       test_qa.py
-|   |
+|   |       
 |   +---uploads
 |   |       0384533f6bc74fe0a34ca64256633ce4.pdf
-|   |
+|   |       1e969d19b5634faa9d9bd2d2b840557d.pdf
+|   |       1ee33a5311a04e8ea54d72193645ffc5.pdf
+|   |       3256f019fa344e62bf046ab4a8c16f9c.pdf
+|   |       96de2bd4b5cd4e8f827a3d0f0e8c4bd7.pdf
+|   |       edd74393f3c04dcf9ad9404a3cf7ab90.pdf
+|   |       
 |   +---utils
 |   |   |   password.py
 |   |   |   pdf_parser.py
 |   |   |   s3.py
 |   |   |   text_chunker.py
-|
+|           
 \---uploads
         0084b6317b3c49dcbcb323267630b4cb.docx
+        

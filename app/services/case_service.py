@@ -27,10 +27,9 @@ class CaseService:
         now = datetime.utcnow().strftime("%Y%m%d")
         return f"CASE-{now}-{next_id}"
 
-    def create_case_from_fields(self, case_name: str, description: Optional[str]):
+    def create_case_from_fields(self, case_name: str):
         case = Case(
             case_name=case_name,
-            description=description,
             case_no="temp",
         )
         self.db.add(case)

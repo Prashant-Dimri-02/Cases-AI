@@ -8,6 +8,8 @@ import logging
 from app.core.logging import configure_logging
 import os
 from app.core.scheduler import start_scheduler
+from app.services.auth_service import seed_roles
+from app.db.session import SessionLocal
 
 configure_logging()
 
@@ -33,6 +35,13 @@ def startup_event():
 
     # ✅ DB must be ready BEFORE scheduler starts
     init_db.init_extensions()
+    
+    # ✅ Seed roles here
+    db = SessionLocal()
+    try:
+        seed_roles(db)
+    finally:
+        db.close()
 
     logging.info("DB initialized. Starting scheduler...")
 

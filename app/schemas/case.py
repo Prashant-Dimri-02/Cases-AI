@@ -40,7 +40,6 @@ class CaseFileOut(BaseModel):
 class CaseOut(BaseModel):
     id: int
     case_name: str
-    description: Optional[str]
     case_no: str
     created_at: Optional[datetime]
 
@@ -53,7 +52,6 @@ class CreateCaseOut(BaseModel):
     id: int
     case_name: str
     case_no: str
-    description: Optional[str]
     created_at: datetime
 
     class Config:
@@ -63,7 +61,6 @@ class CaseListOut(BaseModel):
     id: int
     case_name: str
     case_no: str
-    description: Optional[str]
     created_at: datetime
     case_metadata: Optional[ExtractedCaseMetadata] = None
 
